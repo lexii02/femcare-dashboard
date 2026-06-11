@@ -35,6 +35,11 @@ export interface MarkdownDashboardData {
   dateRange: DateRange;
 }
 
+interface MarkdownSection {
+  heading: string;
+  content: string;
+}
+
 const EMPTY_DATE_RANGE: DateRange = {
   start: '',
   end: '',
@@ -45,15 +50,14 @@ export async function fetchSignalMarkdown(): Promise<string> {
   const response = await fetch(`${import.meta.env.BASE_URL}data/FemCare_SIGNAL_LOG.md`);
 
   if (!response.ok) {
-    throw new Error(`无法读取周报 Markdown：HTTP ${response.status}`);
+    throw new Error(`Unable to read weekly Markdown: HTTP ${response.status}`);
   }
 
   const text = await response.text();
   console.log('markdown length', text.length);
-  console.log('markdown preview', text.slice(0, 100));
 
   if (text.trim().length === 0) {
-    throw new Error('Markdown为空');
+    throw new Error('Markdown is empty');
   }
 
   return text;
@@ -61,6 +65,7 @@ export async function fetchSignalMarkdown(): Promise<string> {
 
 export function parseSignalMarkdown(markdown: string): MarkdownDashboardData {
   const signals = parseSignals(markdown);
+  console.log('parsed signals count', signals.length);
 
   return {
     signals,
@@ -99,70 +104,110 @@ function parseDateRange(markdown: string): DateRange {
 }
 
 function parseSignals(markdown: string): Signal[] {
-  const signalMatches = Array.from(markdown.matchAll(/^##\s+Signal\s+(\d+).*$/gim));
+  return splitSignals(markdown).map((signalBlock, index) => {
+    const headingLine = firstLine(signalBlock);
+    const id = parseSignalId(headingLine) ?? index + 1;
+    const title = parseSignalTitle(headingLine, id);
+    const sections = splitSections(signalBlock, 3);
 
-  return signalMatches.map((match, index) => {
-    const nextMatch = signalMatches[index + 1];
-    const block = markdown.slice(match.index ?? 0, nextMatch?.index ?? markdown.length);
-    const heading = match[0].trim();
-    const id = Number(match[1]);
-    const title = cleanText(heading.replace(/^##\s+Signal\s+\d+\s*[:：锛歭]?\s*/i, ''));
-    const sections = getLevelThreeSections(block);
-    const sofieSection = sections.find(section => /苏菲|鑻忚彶|Sofie/i.test(section.heading));
-    const sofieInsights = sofieSection ? parseSofieInsights(sofieSection.content) : {};
+    const summary = sectionByHeading(sections, ['一句话'])?.content ?? sectionByOrder(sections, 0);
+    const whyItMatters = sectionByHeading(sections, ['为什么值得关注'])?.content ?? sectionByOrder(sections, 1);
+    const coreInsight = sectionByHeading(sections, ['核心洞察'])?.content ?? sectionByOrder(sections, 2);
+    const industrySignalsText = sectionByHeading(sections, ['行业信号判断'])?.content ?? sectionByOrder(sections, 3);
+    const brandActionsText = sectionByHeading(sections, ['相关品牌动作'])?.content ?? sectionByOrder(sections, 4);
+    const trackingText = sectionByHeading(sections, ['值得持续追踪'])?.content ?? sectionByOrder(sections, 5);
+    const sofieText = sectionByHeading(sections, ['对苏菲的启发', '对苏菲'])?.content ?? '';
+    const proposalLine = sectionByHeading(sections, ['可直接用于提案'])?.content ?? sectionByOrder(sections, 7);
+    const strategicNote = sectionByHeading(sections, ['Strategic Note'])?.content ?? sectionByOrder(sections, 8);
 
     return {
       id,
-      title: title || `Signal ${id}`,
-      summary: getSectionContent(sections, 0),
-      whyItMatters: getSectionContent(sections, 1),
-      coreInsight: getSectionContent(sections, 2),
-      industrySignals: parseListLikeText(getSectionContent(sections, 3)).slice(0, 5),
-      brandActions: parseBrandActions(getSectionContent(sections, 4)),
-      tracking: parseTracking(getSectionContent(sections, 5)),
-      sofieInsights,
-      proposalLine: getSectionContent(sections, 7),
-      strategicNote: getSectionContent(sections, 8),
+      title,
+      summary,
+      whyItMatters,
+      coreInsight,
+      industrySignals: parseListLikeText(industrySignalsText).slice(0, 5),
+      brandActions: parseBrandActions(brandActionsText),
+      tracking: parseTracking(trackingText),
+      sofieInsights: parseSofieInsights(sofieText),
+      proposalLine,
+      strategicNote,
     };
   });
 }
 
-function getLevelThreeSections(block: string) {
-  const headingMatches = Array.from(block.matchAll(/^###\s+(.+)$/gim));
+function splitSignals(markdown: string): string[] {
+  const signalHeadings = Array.from(markdown.matchAll(/^##\s+Signal\s+\d+\b.*$/gim));
 
-  return headingMatches.map((match, index) => {
-    const nextMatch = headingMatches[index + 1];
-    const content = block.slice(
-      (match.index ?? 0) + match[0].length,
-      nextMatch?.index ?? block.length
-    );
+  return signalHeadings.map((match, index) => {
+    const start = match.index ?? 0;
+    const end = signalHeadings[index + 1]?.index ?? markdown.length;
+    return markdown.slice(start, end).trim();
+  });
+}
+
+function splitSections(block: string, level: 3): MarkdownSection[] {
+  const marker = '#'.repeat(level);
+  const sectionHeadings = Array.from(block.matchAll(new RegExp(`^${marker}\\s+(.+)$`, 'gim')));
+
+  return sectionHeadings.map((match, index) => {
+    const start = (match.index ?? 0) + match[0].length;
+    const end = sectionHeadings[index + 1]?.index ?? block.length;
 
     return {
       heading: cleanText(match[1]),
-      content: cleanSection(content),
+      content: cleanBlock(block.slice(start, end)),
     };
   });
 }
 
-function getSectionContent(sections: Array<{ content: string }>, index: number) {
+function splitSubsections(block: string, level: 4): MarkdownSection[] {
+  const marker = '#'.repeat(level);
+  const sectionHeadings = Array.from(block.matchAll(new RegExp(`^${marker}\\s+(.+)$`, 'gim')));
+
+  return sectionHeadings.map((match, index) => {
+    const start = (match.index ?? 0) + match[0].length;
+    const end = sectionHeadings[index + 1]?.index ?? block.length;
+
+    return {
+      heading: cleanText(match[1]),
+      content: cleanBlock(block.slice(start, end)),
+    };
+  });
+}
+
+function sectionByHeading(sections: MarkdownSection[], keywords: string[]) {
+  return sections.find(section =>
+    keywords.some(keyword => normalizeText(section.heading).includes(normalizeText(keyword)))
+  );
+}
+
+function sectionByOrder(sections: MarkdownSection[], index: number) {
   return sections[index]?.content ?? '';
 }
 
-function parseBrandActions(text: string) {
-  const actions = text
-    .split(/\n+/)
-    .map(line => line.trim())
-    .filter(Boolean)
-    .map(line => {
-      const parts = line.split(/[:：锛]/);
+function parseSignalId(heading: string): number | null {
+  const match = heading.match(/^##\s+Signal\s+(\d+)/i);
+  return match ? Number(match[1]) : null;
+}
 
-      if (parts.length < 2) {
-        return { brand: '相关品牌', action: cleanText(line) };
+function parseSignalTitle(heading: string, id: number) {
+  const title = cleanText(heading.replace(/^##\s+Signal\s+\d+\s*[:：]\s*/i, ''));
+  return title || `Signal ${id}`;
+}
+
+function parseBrandActions(text: string) {
+  const actions = cleanLines(text)
+    .map(line => {
+      const match = line.match(/^([^:：]+)[:：]\s*(.+)$/);
+
+      if (!match) {
+        return { brand: '相关品牌', action: line };
       }
 
       return {
-        brand: cleanText(parts.shift() ?? '相关品牌'),
-        action: cleanText(parts.join('：')),
+        brand: cleanText(match[1]),
+        action: cleanText(match[2]),
       };
     })
     .filter(action => action.action);
@@ -171,31 +216,43 @@ function parseBrandActions(text: string) {
 }
 
 function parseTracking(text: string): Signal['tracking'] {
-  const lines = text.split(/\n+/).map(line => cleanText(line)).filter(Boolean);
-  const buckets = lines.map(line => parseListLikeText(line.replace(/^[^:：锛]+[:：锛]\s*/, '')));
+  const lines = cleanLines(text);
+  const brands = parseTrackingLine(lines, ['品牌']);
+  const topics = parseTrackingLine(lines, ['话题']);
+  const kols = parseTrackingLine(lines, ['KOL']);
+  const userGroups = parseTrackingLine(lines, ['用户圈层']);
+  const platformPlays = parseTrackingLine(lines, ['平台玩法']);
 
   return {
-    brands: buckets[0] ?? [],
-    topics: buckets[1] ?? [],
-    kols: buckets[2] ?? [],
-    userGroups: buckets[3] ?? [],
-    platformPlays: buckets[4] ?? [],
+    brands,
+    topics,
+    kols,
+    userGroups,
+    platformPlays,
   };
 }
 
+function parseTrackingLine(lines: string[], keywords: string[]) {
+  const line = lines.find(candidate =>
+    keywords.some(keyword => normalizeText(candidate).includes(normalizeText(keyword)))
+  );
+
+  if (!line) {
+    return [];
+  }
+
+  return parseListLikeText(line.replace(/^.*?[:：]\s*/, ''));
+}
+
 function parseSofieInsights(text: string): Signal['sofieInsights'] {
-  const subSections = Array.from(text.matchAll(/^####\s+(.+)$/gim));
-  const values = subSections.map((match, index) => {
-    const nextMatch = subSections[index + 1];
-    return cleanSection(text.slice((match.index ?? 0) + match[0].length, nextMatch?.index ?? text.length));
-  });
+  const subSections = splitSubsections(text, 4);
 
   return {
-    content: values[0],
-    operations: values[1],
-    ugc: values[2],
-    ip: values[3],
-    risks: values[4],
+    content: sectionByHeading(subSections, ['内容机会'])?.content,
+    operations: sectionByHeading(subSections, ['运营机会'])?.content,
+    ugc: sectionByHeading(subSections, ['UGC机会'])?.content,
+    ip: sectionByHeading(subSections, ['IP机会'])?.content,
+    risks: sectionByHeading(subSections, ['风险提醒'])?.content,
   };
 }
 
@@ -206,18 +263,36 @@ function parseListLikeText(text: string): string[] {
     .filter(Boolean);
 }
 
-function cleanSection(text: string) {
+function cleanBlock(text: string) {
   return text
-    .replace(/^####\s+.+$/gim, '')
     .split(/\n+/)
     .map(line => cleanText(line))
     .filter(Boolean)
     .join('\n');
 }
 
+function cleanLines(text: string) {
+  return text
+    .split(/\n+/)
+    .map(line => cleanText(line))
+    .filter(Boolean);
+}
+
 function cleanText(text: string) {
   return text
+    .replace(/\r/g, '')
     .replace(/\s+/g, ' ')
     .replace(/^[-*]\s*/, '')
     .trim();
+}
+
+function firstLine(text: string) {
+  return text.split(/\n/)[0]?.trim() ?? '';
+}
+
+function normalizeText(text: string) {
+  return cleanText(text)
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/[()（）]/g, '');
 }
