@@ -11,6 +11,17 @@
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script type="module">
+      if (window.location.hostname === 'lexii02.github.io') {
+        const stylesheet = document.createElement('link');
+        stylesheet.rel = 'stylesheet';
+        stylesheet.href = '/femcare-dashboard/assets/main.css';
+        document.head.appendChild(stylesheet);
+
+        Function("return import('/femcare-dashboard/assets/main.js')")();
+      } else {
+        import('/src/main.tsx');
+      }
+    </script>
   </body>
 </html>
