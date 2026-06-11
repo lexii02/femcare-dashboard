@@ -1,5 +1,10 @@
-import { useState, useMemo } from 'react';
-import { signals, allTags, allBrands, dateRange, Signal } from './data/trends';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  DateRange,
+  fetchSignalMarkdown,
+  parseSignalMarkdown,
+  Signal
+} from './data/markdownSignals';
 import {
   Search,
   Filter,
@@ -14,8 +19,7 @@ import {
   Sparkles,
   Building2,
   Target,
-  AlertCircle,
-  X
+  AlertCircle
 } from 'lucide-react';
 
 type TabType = 'timeline' | 'cases' | 'stats' | 'inspirations';
@@ -26,6 +30,57 @@ function App() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [expandedSignal, setExpandedSignal] = useState<number | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+  const [signals, setSignals] = useState<Signal[]>([]);
+  const [dateRange, setDateRange] = useState<DateRange>({ start: '', end: '', generated: '' });
+  const [loadStatus, setLoadStatus] = useState<'loading' | 'ready' | 'empty' | 'parse-error' | 'error'>('loading');
+  const [loadError, setLoadError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchSignalMarkdown()
+      .then(markdown => {
+        if (cancelled) {
+          return;
+        }
+
+        if (markdown.trim().length === 0) {
+          setLoadStatus('empty');
+          return;
+        }
+
+        const parsed = parseSignalMarkdown(markdown);
+
+        if (parsed.signals.length === 0) {
+          setLoadStatus('parse-error');
+          return;
+        }
+
+        setSignals(parsed.signals);
+        setDateRange(parsed.dateRange);
+        setLoadStatus('ready');
+      })
+      .catch(error => {
+        if (cancelled) {
+          return;
+        }
+
+        const message = error instanceof Error ? error.message : '无法读取周报 Markdown';
+        setLoadError(message);
+        setLoadStatus(message === 'Markdown为空' ? 'empty' : 'error');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const allTags = useMemo(() => {
+    return Array.from(new Set(signals.flatMap(signal => [
+      ...signal.industrySignals,
+      ...signal.tracking.topics
+    ]))).filter(Boolean);
+  }, [signals]);
 
   const filteredSignals = useMemo(() => {
     return signals.filter(signal => {
@@ -173,17 +228,39 @@ function App() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {activeTab === 'timeline' && (
+        {loadStatus === 'loading' && (
+          <LoadStateCard title="正在读取周报 Markdown" description="正在加载 public/data/FemCare_SIGNAL_LOG.md" />
+        )}
+        {loadStatus === 'empty' && (
+          <LoadStateCard title="Markdown为空" description="public/data/FemCare_SIGNAL_LOG.md 已读取，但没有可解析内容。" />
+        )}
+        {loadStatus === 'parse-error' && (
+          <LoadStateCard title="Markdown读取成功，但解析失败" description="请检查 Signal 标题是否使用 ## Signal 1 这样的结构。" />
+        )}
+        {loadStatus === 'error' && (
+          <LoadStateCard title="无法读取周报 Markdown" description={loadError} />
+        )}
+        {loadStatus === 'ready' && activeTab === 'timeline' && (
           <TimelineTab
             signals={filteredSignals}
             expandedSignal={expandedSignal}
             setExpandedSignal={setExpandedSignal}
           />
         )}
-        {activeTab === 'cases' && <CasesTab signals={filteredSignals} />}
-        {activeTab === 'stats' && <StatsTab signals={filteredSignals} />}
-        {activeTab === 'inspirations' && <InspirationsTab signals={filteredSignals} />}
+        {loadStatus === 'ready' && activeTab === 'cases' && <CasesTab signals={filteredSignals} />}
+        {loadStatus === 'ready' && activeTab === 'stats' && <StatsTab signals={filteredSignals} />}
+        {loadStatus === 'ready' && activeTab === 'inspirations' && <InspirationsTab signals={filteredSignals} />}
       </main>
+    </div>
+  );
+}
+
+function LoadStateCard({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">
+      <AlertCircle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
+      <h2 className="text-base font-semibold text-slate-800">{title}</h2>
+      <p className="text-sm text-slate-500 mt-2">{description}</p>
     </div>
   );
 }
