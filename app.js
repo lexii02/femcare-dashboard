@@ -1,4 +1,8 @@
-const DATA_PATH = "./data/FemCare_SIGNAL_LOG.md";
+const DATA_PATH = "/data/FemCare_SIGNAL_LOG.md";
+const DATA_PATH_FALLBACKS = [
+  "./public/data/FemCare_SIGNAL_LOG.md",
+  "./src/data/FemCare_SIGNAL_LOG.md"
+];
 
 const brandLibrary = [
   { name: "苏菲", role: "核心关注品牌", focus: "夜用产品、安睡裤、IP角色、经期管理", highlighted: true },
@@ -52,7 +56,7 @@ async function initDashboard() {
   render();
 
   try {
-    const markdown = await loadMarkdown(DATA_PATH);
+    const markdown = await loadMarkdown(DATA_PATH, DATA_PATH_FALLBACKS);
     const parsed = parseSignalMarkdown(markdown);
     state.signals = parsed.signals;
     state.reportMeta = {
@@ -72,7 +76,26 @@ async function initDashboard() {
   render();
 }
 
-async function loadMarkdown(path) {
+async function loadMarkdown(path, fallbackPaths = []) {
+  const paths = [path, ...fallbackPaths];
+  const errors = [];
+
+  for (const candidate of paths) {
+    try {
+      const markdown = await loadMarkdownPath(candidate);
+      if (markdown.trim()) {
+        return markdown;
+      }
+      errors.push(`${candidate}: empty`);
+    } catch (error) {
+      errors.push(`${candidate}: ${error.message}`);
+    }
+  }
+
+  throw new Error(`无法读取周报 Markdown。已尝试：${errors.join("；")}`);
+}
+
+async function loadMarkdownPath(path) {
   try {
     const response = await fetch(path, { cache: "no-store" });
     if (!response.ok) {
@@ -83,7 +106,7 @@ async function loadMarkdown(path) {
     if (window.location.protocol === "file:") {
       return loadMarkdownViaIframe(path);
     }
-    throw new Error(`无法读取 ${path}。请确认文件存在，并通过本地服务器或线上部署访问 Dashboard。`);
+    throw new Error(`无法读取 ${path}`);
   }
 }
 
@@ -530,7 +553,7 @@ function renderTabs() {
 }
 
 function renderView(list) {
-  if (state.loading) return emptyState("正在读取 data/FemCare_SIGNAL_LOG.md...");
+  if (state.loading) return emptyState("正在读取 /data/FemCare_SIGNAL_LOG.md...");
   if (state.loadError) return emptyState(state.loadError);
   if (state.tab === "brands") return renderBrandLibrary(list);
   if (state.tab === "stats") return renderStats(list);
@@ -543,7 +566,7 @@ function renderTimeline(list) {
     <div class="view-header">
       <div>
         <h2>趋势时间轴</h2>
-        <p>页面内容来自 data/FemCare_SIGNAL_LOG.md，按周报周期、品牌、内容标签和搜索词筛选。</p>
+        <p>页面内容来自 /data/FemCare_SIGNAL_LOG.md，按周报周期、品牌、内容标签和搜索词筛选。</p>
       </div>
       <div class="sort-row">
         <select id="sortSelect" class="select">
