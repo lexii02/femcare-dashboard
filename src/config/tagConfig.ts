@@ -1,0 +1,50 @@
+window.TAG_CONFIG = {
+  trendCategories: [
+    "用户需求升级",
+    "内容范式变化",
+    "产品创新信号",
+    "女性情绪议题",
+    "潜在风险信号",
+    "社群运营机会",
+    "UGC机会",
+    "品牌营销动作",
+    "竞品动态",
+    "舆情风险"
+  ],
+  tags: [
+    { tagId: "health_cycle_management", label: "经期管理", group: "女性健康类", aliases: ["周期管理", "生理期管理", "月经周期管理"], description: "围绕经期前中后连续状态、行为和生活方式管理的内容。", enabled: true },
+    { tagId: "health_pms", label: "PMS", group: "女性健康类", aliases: ["经前综合征", "经前不适"], description: "经前综合征及相关身体、情绪和生活状态讨论。", enabled: true },
+    { tagId: "health_pre_period_mood", label: "经前情绪", group: "女性健康类", aliases: ["经前emo", "经前焦虑", "经前烦躁"], description: "经前情绪波动、焦虑、低落、烦躁等表达。", enabled: true },
+    { tagId: "health_period_pain", label: "痛经", group: "女性健康类", aliases: ["痛经就医", "经痛"], description: "痛经体验、缓解方式、就医提示和相关科普。", enabled: true },
+    { tagId: "health_intimate_care", label: "私密健康", group: "女性健康类", aliases: ["私处护理", "私处护理误区", "亲密健康"], description: "私密部位护理、性健康、卫生习惯和误区纠正。", enabled: true },
+    { tagId: "health_puberty_education", label: "青春期教育", group: "女性健康类", aliases: ["初潮教育", "青春期科普"], description: "面向青春期、初潮和校园场景的身体教育。", enabled: true },
+    { tagId: "health_postpartum_care", label: "产后护理", group: "女性健康类", aliases: ["产褥期护理", "产后恢复"], description: "产后女性身体恢复、护理和心理状态。", enabled: true },
+    { tagId: "health_menopause", label: "更年期", group: "女性健康类", aliases: ["围绝经期", "更年期护理"], description: "更年期身体变化、情绪变化和健康管理。", enabled: true },
+
+    { tagId: "product_sanitary_pad", label: "卫生巾", group: "产品功能类", aliases: ["卫生棉", "姨妈巾"], description: "卫生巾品类和基础产品体验。", enabled: true },
+    { tagId: "product_night_use", label: "夜用产品", group: "产品功能类", aliases: ["安睡", "夜用", "夜间护理"], description: "夜用卫生巾、夜间安睡和睡眠场景护理。", enabled: true },
+    { tagId: "product_period_pants", label: "安睡裤", group: "产品功能类", aliases: ["安心裤", "经期裤"], description: "安睡裤、经期裤及裤型护理产品。", enabled: true },
+    { tagId: "product_liquid_pad", label: "液体卫生巾", group: "产品功能类", aliases: ["液体材料卫生巾"], description: "液体卫生巾及相关吸收材料产品。", enabled: true },
+    { tagId: "product_breathability", label: "透气性", group: "产品功能类", aliases: ["透气", "闷热", "闷感"], description: "透气、闷热、干爽等体感问题。", enabled: true },
+    { tagId: "product_leak_proof", label: "防漏", group: "产品功能类", aliases: ["漏经", "夜间漏经焦虑", "侧漏", "防侧漏"], description: "防漏、侧漏、夜间漏经和安全感相关需求。", enabled: true },
+    { tagId: "product_comfort", label: "舒适感", group: "产品功能类", aliases: ["舒适", "柔软", "贴肤"], description: "柔软、贴肤、无感和整体舒适体验。", enabled: true },
+    { tagId: "product_material_innovation", label: "材质创新", group: "产品功能类", aliases: ["新材质", "材料创新", "棉柔材质"], description: "材质、面层、吸收芯和材料安全创新。", enabled: true },
+
+    { tagId: "ops_ugc", label: "UGC共创", group: "内容运营类", aliases: ["用户共创", "UGC机会"], description: "用户参与创作、投稿、共创和二创玩法。", enabled: true },
+    { tagId: "ops_ip_character", label: "IP角色", group: "内容运营类", aliases: ["AI角色", "品牌IP", "苏菲兔"], description: "品牌角色、AI角色、拟人化表达和IP运营。", enabled: true },
+    { tagId: "ops_comment_interaction", label: "评论区互动", group: "内容运营类", aliases: ["夜间Bot", "评论互动", "评论区玩法"], description: "评论区接梗、回复、值班和互动机制。", enabled: true },
+    { tagId: "ops_topic_operation", label: "话题运营", group: "内容运营类", aliases: ["话题挑战", "平台原生", "社媒话题"], description: "话题设置、平台原生表达和内容扩散机制。", enabled: true },
+    { tagId: "ops_emotional_value", label: "情绪价值", group: "内容运营类", aliases: ["情绪陪伴", "夜间情绪", "心理安睡"], description: "情绪安抚、陪伴感和女性情绪表达。", enabled: true },
+    { tagId: "ops_education", label: "科普内容", group: "内容运营类", aliases: ["健康科普", "AI健康问答", "经期谣言", "专家背书"], description: "健康知识、谣言纠错、专家背书和可信科普。", enabled: true },
+    { tagId: "ops_moment_marketing", label: "节点营销", group: "内容运营类", aliases: ["节日营销", "营销节点"], description: "节日、节点、事件和周期性传播机会。", enabled: true },
+
+    { tagId: "platform_weibo", label: "微博", group: "品牌/平台类", aliases: ["微博热搜", "微博话题"], description: "微博平台话题、热搜和互动。", enabled: true },
+    { tagId: "platform_xiaohongshu", label: "小红书", group: "品牌/平台类", aliases: ["小红书笔记", "小红书种草"], description: "小红书内容、UGC、种草和搜索场景。", enabled: true },
+    { tagId: "platform_douyin", label: "抖音", group: "品牌/平台类", aliases: ["抖音电商", "抖音短视频"], description: "抖音内容、直播和电商场景。", enabled: true },
+    { tagId: "platform_tiktok_shop", label: "TikTok Shop", group: "品牌/平台类", aliases: ["TikTok电商"], description: "TikTok Shop和海外社媒电商场景。", enabled: true },
+    { tagId: "platform_ecommerce_review", label: "电商评价", group: "品牌/平台类", aliases: ["用户评价", "商品评价"], description: "电商评论、差评、购买决策和产品反馈。", enabled: true },
+    { tagId: "platform_competitor_case", label: "竞品案例", group: "品牌/平台类", aliases: ["竞品动态", "竞品动作"], description: "竞品营销、产品和运营案例。", enabled: true },
+    { tagId: "platform_endorser", label: "代言人营销", group: "品牌/平台类", aliases: ["明星代言", "代言人"], description: "明星、艺人和公众人物代言营销。", enabled: true },
+    { tagId: "platform_athlete", label: "运动员营销", group: "品牌/平台类", aliases: ["女性运动员", "体育营销"], description: "女性运动员、体育场景和运动营销。", enabled: true }
+  ]
+};
