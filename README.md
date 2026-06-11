@@ -16,7 +16,7 @@ Vite / 线上运行时读取路径：
 public/data/FemCare_SIGNAL_LOG.md
 ```
 
-如果你仍在 `src/data/FemCare_SIGNAL_LOG.md` 维护源文件，需要同步复制到 `public/data/FemCare_SIGNAL_LOG.md`，因为 Vite 运行时不能直接通过 URL fetch `src/data` 内的文件。页面会在加载时读取并解析 Markdown，不再在 `app.js` 中硬编码周报 Signal 内容。
+页面会在加载时读取并解析 `public/data/FemCare_SIGNAL_LOG.md`，不再在 `app.js` 中硬编码周报 Signal 内容。
 
 ## 本地预览
 
@@ -42,8 +42,6 @@ http://127.0.0.1:4173
 
 ```text
 public/data/
-  FemCare_SIGNAL_LOG.md
-src/data/
   FemCare_SIGNAL_LOG.md
 src/config/
   tagConfig.ts

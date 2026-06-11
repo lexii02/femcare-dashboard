@@ -1,8 +1,4 @@
-const DATA_PATH = "/data/FemCare_SIGNAL_LOG.md";
-const DATA_PATH_FALLBACKS = [
-  "./public/data/FemCare_SIGNAL_LOG.md",
-  "./src/data/FemCare_SIGNAL_LOG.md"
-];
+const DATA_PATH = `${import.meta.env.BASE_URL}data/FemCare_SIGNAL_LOG.md`;
 
 const brandLibrary = [
   { name: "苏菲", role: "核心关注品牌", focus: "夜用产品、安睡裤、IP角色、经期管理", highlighted: true },
@@ -56,8 +52,16 @@ async function initDashboard() {
   render();
 
   try {
-    const markdown = await loadMarkdown(DATA_PATH, DATA_PATH_FALLBACKS);
-    const parsed = parseSignalMarkdown(markdown);
+    const markdown = await loadMarkdown();
+    let parsed;
+    try {
+      parsed = parseSignalMarkdown(markdown);
+    } catch (error) {
+      throw new Error("Markdown读取成功，但解析失败");
+    }
+    if (parsed.signals.length === 0) {
+      throw new Error("Markdown读取成功，但解析失败");
+    }
     state.signals = parsed.signals;
     state.reportMeta = {
       ...state.reportMeta,
@@ -76,75 +80,21 @@ async function initDashboard() {
   render();
 }
 
-async function loadMarkdown(path, fallbackPaths = []) {
-  const paths = [path, ...fallbackPaths];
-  const errors = [];
-
-  for (const candidate of paths) {
-    try {
-      const markdown = await loadMarkdownPath(candidate);
-      if (markdown.trim()) {
-        return markdown;
-      }
-      errors.push(`${candidate}: empty`);
-    } catch (error) {
-      errors.push(`${candidate}: ${error.message}`);
-    }
+async function loadMarkdown() {
+  const response = await fetch(DATA_PATH, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`无法读取周报 Markdown：HTTP ${response.status}`);
   }
 
-  throw new Error(`无法读取周报 Markdown。已尝试：${errors.join("；")}`);
-}
+  const text = await response.text();
+  console.log("markdown length", text.length);
+  console.log("markdown preview", text.slice(0, 100));
 
-async function loadMarkdownPath(path) {
-  try {
-    const response = await fetch(path, { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    return await response.text();
-  } catch (fetchError) {
-    if (window.location.protocol === "file:") {
-      return loadMarkdownViaIframe(path);
-    }
-    throw new Error(`无法读取 ${path}`);
+  if (text.trim().length === 0) {
+    throw new Error("Markdown为空");
   }
-}
 
-function loadMarkdownViaIframe(path) {
-  return new Promise((resolve, reject) => {
-    const frame = document.createElement("iframe");
-    frame.style.display = "none";
-    frame.src = path;
-
-    frame.onload = () => {
-      try {
-        const text =
-          frame.contentDocument?.body?.innerText ||
-          frame.contentDocument?.documentElement?.textContent ||
-          "";
-        frame.remove();
-        if (!text.trim()) {
-          reject(new Error(`读取到的 ${path} 为空。`));
-          return;
-        }
-        resolve(text);
-      } catch (error) {
-        frame.remove();
-        reject(
-          new Error(
-            `浏览器阻止直接读取 ${path}。请运行 start-dashboard.cmd 后访问 http://127.0.0.1:4173。`
-          )
-        );
-      }
-    };
-
-    frame.onerror = () => {
-      frame.remove();
-      reject(new Error(`无法加载 ${path}。`));
-    };
-
-    document.body.appendChild(frame);
-  });
+  return text;
 }
 
 function parseSignalMarkdown(markdown) {

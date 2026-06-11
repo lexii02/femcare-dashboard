@@ -17,7 +17,12 @@ const types = {
 
 const server = http.createServer((req, res) => {
   const urlPath = decodeURIComponent(new URL(req.url, `http://${host}:${port}`).pathname);
-  const requested = urlPath === "/" ? "/index.html" : urlPath;
+  const requested =
+    urlPath === "/"
+      ? "/index.html"
+      : urlPath.startsWith("/data/")
+        ? `/public${urlPath}`
+        : urlPath;
   const filePath = path.join(root, requested);
   const relative = path.relative(root, filePath);
 
