@@ -24,6 +24,124 @@ import {
 
 type TabType = 'timeline' | 'cases' | 'stats' | 'inspirations';
 
+interface BrandCase {
+  title: string;
+  brand: string;
+  action: string;
+  reference: string;
+  signalTitle: string;
+  signalId: number;
+  tags: string[];
+}
+
+interface ProposalIdea {
+  type: '内容机会' | '运营机会' | 'UGC机会' | 'IP机会' | '风险提醒' | '提案金句';
+  content: string;
+  sourceSignal: string;
+  signalNumber: number;
+  tags: string[];
+  category: string[];
+  color: 'rose' | 'blue' | 'green' | 'purple' | 'amber' | 'slate';
+}
+
+const GENERIC_BRAND_KEYWORDS = [
+  '传统卫生巾品牌',
+  '女性护理品牌',
+  '苏菲及同类品牌',
+  '同类品牌',
+  '社媒平台与研究机构',
+  'AI健康工具与研究机构',
+  '研究机构',
+  '相关品牌',
+];
+
+const NON_CASE_ACTION_KEYWORDS = [
+  '未观察到',
+  '未发现',
+  '没有明确',
+  '无明确',
+  '仍以',
+  '行业观察',
+];
+
+function isConcreteBrandAction(brand: string, action: string): boolean {
+  const normalizedBrand = brand.trim();
+  const normalizedAction = action.trim();
+
+  if (!normalizedBrand || !normalizedAction) {
+    return false;
+  }
+
+  const isGenericBrand = GENERIC_BRAND_KEYWORDS.some(keyword => normalizedBrand.includes(keyword));
+  const isObservationOnly = NON_CASE_ACTION_KEYWORDS.some(keyword => normalizedAction.includes(keyword));
+
+  return !isGenericBrand && !isObservationOnly;
+}
+
+function createBrandCaseTitle(brand: string, action: string): string {
+  const cleanedAction = action
+    .replace(/[。.!！?？].*$/, '')
+    .replace(/^以\s*/, '以 ')
+    .trim();
+  const shortAction = cleanedAction.length > 34 ? `${cleanedAction.slice(0, 34)}...` : cleanedAction;
+
+  return `${brand}：${shortAction}`;
+}
+
+function createReferencePoint(signal: Signal): string {
+  return signal.sofieInsights.content ||
+    signal.sofieInsights.operations ||
+    signal.coreInsight ||
+    signal.proposalLine ||
+    '可结合该动作观察女性护理品牌在内容周期、用户沟通和产品场景上的延展机会。';
+}
+
+function uniqueItems(items: string[]): string[] {
+  return Array.from(new Set(items.map(item => item.trim()).filter(Boolean)));
+}
+
+function startOfWeek(date: Date): Date {
+  const weekStart = new Date(date);
+  const day = weekStart.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+
+  weekStart.setHours(0, 0, 0, 0);
+  weekStart.setDate(weekStart.getDate() + diff);
+
+  return weekStart;
+}
+
+function addDays(date: Date, days: number): Date {
+  const nextDate = new Date(date);
+  nextDate.setDate(nextDate.getDate() + days);
+
+  return nextDate;
+}
+
+function parseLocalDate(value: string): Date | null {
+  const match = value.match(/(\d{4})[-/](\d{2})[-/](\d{2})/);
+
+  if (!match) {
+    return null;
+  }
+
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
+function formatDisplayDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${year}/${month}/${day}`;
+}
+
+function isDateInRange(date: Date, start: Date, end: Date): boolean {
+  const time = date.getTime();
+
+  return time >= start.getTime() && time <= end.getTime();
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState<TabType>('timeline');
   const [searchQuery, setSearchQuery] = useState('');
@@ -32,6 +150,7 @@ function App() {
   const [showFilters, setShowFilters] = useState(false);
   const [signals, setSignals] = useState<Signal[]>([]);
   const [dateRange, setDateRange] = useState<DateRange>({ start: '', end: '', generated: '' });
+  const [currentWeekStart, setCurrentWeekStart] = useState(() => startOfWeek(new Date()));
   const [loadStatus, setLoadStatus] = useState<'loading' | 'ready' | 'empty' | 'parse-error' | 'error'>('loading');
   const [loadError, setLoadError] = useState('');
 
@@ -52,6 +171,7 @@ function App() {
         const parsed = parseSignalMarkdown(markdown);
 
         if (parsed.signals.length === 0) {
+          setLoadError('Markdown读取成功，但未识别到Signal结构');
           setLoadStatus('parse-error');
           return;
         }
@@ -67,7 +187,13 @@ function App() {
 
         const message = error instanceof Error ? error.message : '无法读取周报 Markdown';
         setLoadError(message);
-        setLoadStatus(message === 'Markdown为空' ? 'empty' : 'error');
+        if (message === 'Markdown为空') {
+          setLoadStatus('empty');
+        } else if (message === 'Markdown读取成功，但未识别到Signal结构') {
+          setLoadStatus('parse-error');
+        } else {
+          setLoadStatus('error');
+        }
       });
 
     return () => {
@@ -78,26 +204,88 @@ function App() {
   const allTags = useMemo(() => {
     return Array.from(new Set(signals.flatMap(signal => [
       ...signal.industrySignals,
-      ...signal.tracking.topics
+      ...signal.tracking.topics,
+      ...signal.tags
     ]))).filter(Boolean);
   }, [signals]);
 
-  const filteredSignals = useMemo(() => {
+  const currentWeekRange = useMemo(() => {
+    const start = currentWeekStart;
+    const end = addDays(start, 6);
+
+    return {
+      start,
+      end,
+      label: `${formatDisplayDate(start)} - ${formatDisplayDate(end)}`,
+    };
+  }, [currentWeekStart]);
+
+  const weeklySignals = useMemo(() => {
     return signals.filter(signal => {
-      const matchesSearch = searchQuery === '' ||
-        signal.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        signal.summary.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        signal.coreInsight.toLowerCase().includes(searchQuery.toLowerCase());
+      const signalDate = parseLocalDate(signal.signalDate || dateRange.generated || dateRange.end);
+
+      if (!signalDate) {
+        return true;
+      }
+
+      return isDateInRange(signalDate, currentWeekRange.start, currentWeekRange.end);
+    });
+  }, [signals, dateRange.generated, dateRange.end, currentWeekRange.start, currentWeekRange.end]);
+
+  const filteredSignals = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+
+    return weeklySignals.filter(signal => {
+      const searchableText = [
+        signal.title,
+        signal.summary,
+        signal.whyItMatters,
+        signal.coreInsight,
+        signal.proposalLine,
+        signal.strategicNote,
+        ...signal.industrySignals,
+        ...signal.tags,
+        ...signal.tracking.brands,
+        ...signal.tracking.topics,
+        ...signal.tracking.kols,
+        ...signal.tracking.userGroups,
+        ...signal.tracking.platformPlays,
+        ...signal.brandActions.flatMap(action => [action.brand, action.action]),
+        signal.sofieInsights.content,
+        signal.sofieInsights.operations,
+        signal.sofieInsights.ugc,
+        signal.sofieInsights.ip,
+        signal.sofieInsights.risks,
+      ].filter(Boolean).join(' ').toLowerCase();
+
+      const matchesSearch = normalizedQuery === ''
+        ? true
+        : searchableText.includes(normalizedQuery);
 
       const matchesTags = selectedTags.length === 0 ||
         selectedTags.some(tag =>
           signal.industrySignals.includes(tag) ||
-          signal.tracking.topics.includes(tag)
+          signal.tracking.topics.includes(tag) ||
+          signal.tags.includes(tag)
         );
 
       return matchesSearch && matchesTags;
     });
-  }, [searchQuery, selectedTags]);
+  }, [weeklySignals, searchQuery, selectedTags]);
+
+  useEffect(() => {
+    console.log('signals', signals.length);
+    console.log('filteredSignals', filteredSignals.length);
+    console.log('searchQuery', searchQuery);
+  }, [signals.length, filteredSignals.length, searchQuery]);
+
+  const goToPreviousWeek = () => {
+    setCurrentWeekStart((weekStart: Date) => addDays(weekStart, -7));
+  };
+
+  const goToNextWeek = () => {
+    setCurrentWeekStart((weekStart: Date) => addDays(weekStart, 7));
+  };
 
   const toggleTag = (tag: string) => {
     setSelectedTags(prev =>
@@ -126,9 +314,28 @@ function App() {
                 </div>
                 <p className="text-sm text-slate-500 mt-1">女性护理行业趋势监测 Dashboard</p>
               </div>
-              <div className="text-xs text-slate-400 bg-white/60 rounded-lg px-3 py-2 border border-rose-100">
-                <Clock className="w-3 h-3 inline mr-1" />
-                {dateRange.start} ~ {dateRange.end}
+              <div className="bg-white/60 rounded-lg px-3 py-2 border border-rose-100">
+                <div className="text-[11px] text-slate-400 mb-1">周报周期</div>
+                <div className="flex items-center gap-2 text-slate-500">
+                  <button
+                    type="button"
+                    onClick={goToPreviousWeek}
+                    className="px-2 py-1 rounded-md bg-white/70 border border-rose-100 text-xs font-medium hover:border-rose-300 hover:text-rose-500 transition-colors"
+                  >
+                    上一周
+                  </button>
+                  <div className="flex items-center gap-1.5 text-[17px] font-medium text-slate-500 whitespace-nowrap">
+                    <Clock className="w-4 h-4 text-slate-400" />
+                    {currentWeekRange.label}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={goToNextWeek}
+                    className="px-2 py-1 rounded-md bg-white/70 border border-rose-100 text-xs font-medium hover:border-rose-300 hover:text-rose-500 transition-colors"
+                  >
+                    下一周
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -235,10 +442,13 @@ function App() {
           <LoadStateCard title="Markdown为空" description="public/data/FemCare_SIGNAL_LOG.md 已读取，但没有可解析内容。" />
         )}
         {loadStatus === 'parse-error' && (
-          <LoadStateCard title="Markdown读取成功，但解析失败" description="请检查 Signal 标题是否使用 ## Signal 1 这样的结构。" />
+          <LoadStateCard title={loadError || 'Markdown读取成功，但未识别到Signal结构'} description="请检查 Signal 标题是否使用 ## Signal 1：标题 这样的结构。" />
         )}
         {loadStatus === 'error' && (
           <LoadStateCard title="无法读取周报 Markdown" description={loadError} />
+        )}
+        {loadStatus === 'ready' && weeklySignals.length === 0 && (
+          <LoadStateCard title="本周暂无记录" description={currentWeekRange.label} />
         )}
         {loadStatus === 'ready' && activeTab === 'timeline' && (
           <TimelineTab
@@ -414,22 +624,52 @@ function TimelineTab({
 }
 
 function CasesTab({ signals }: { signals: Signal[] }) {
-  const allCases = signals.flatMap(signal =>
-    signal.brandActions.map(action => ({
-      ...action,
-      signalTitle: signal.title,
-      signalId: signal.id,
-      topics: signal.tracking.topics
-    }))
-  );
+  const brandCases = useMemo<BrandCase[]>(() => {
+    return signals.flatMap(signal =>
+      signal.brandActions
+        .filter(action => isConcreteBrandAction(action.brand, action.action))
+        .map(action => {
+          const tags = uniqueItems([
+            ...signal.tags,
+            ...signal.tracking.topics,
+            ...signal.industrySignals,
+          ]).slice(0, 5);
+
+          return {
+            title: createBrandCaseTitle(action.brand, action.action),
+            brand: action.brand,
+            action: action.action,
+            reference: createReferencePoint(signal),
+            signalTitle: signal.title,
+            signalId: signal.id,
+            tags,
+          };
+        })
+    );
+  }, [signals]);
 
   const [caseFilter, setCaseFilter] = useState('');
 
-  const filteredCases = allCases.filter(c =>
-    caseFilter === '' || c.brand.includes(caseFilter) || c.action.includes(caseFilter)
-  );
+  const filteredBrands = brandCases.filter(item => {
+    const normalizedCaseFilter = caseFilter.trim().toLowerCase();
 
-  const uniqueBrands = [...new Set(allCases.map(c => c.brand))];
+    if (normalizedCaseFilter === '') {
+      return true;
+    }
+
+    return [item.brand, item.title, item.action, item.reference, item.signalTitle, ...item.tags]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+      .includes(normalizedCaseFilter);
+  });
+
+  const uniqueBrands = uniqueItems(brandCases.map(c => c.brand));
+
+  useEffect(() => {
+    console.log('brands', brandCases.length);
+    console.log('filteredBrands', filteredBrands.length);
+  }, [brandCases.length, filteredBrands.length]);
 
   return (
     <div>
@@ -460,15 +700,32 @@ function CasesTab({ signals }: { signals: Signal[] }) {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {filteredCases.map((c, i) => (
+        {filteredBrands.map((c, i) => (
           <div key={i} className="bg-white rounded-xl border border-slate-200 p-5 hover:border-rose-200 transition-colors">
             <div className="flex items-start justify-between gap-3 mb-3">
-              <span className="text-sm font-semibold text-blue-600">{c.brand}</span>
+              <h3 className="text-base font-semibold text-slate-800 leading-snug">{c.title}</h3>
               <span className="text-xs text-slate-400">Signal {c.signalId}</span>
             </div>
-            <p className="text-sm text-slate-700 leading-relaxed">{c.action}</p>
+            <div className="space-y-3">
+              <div>
+                <span className="text-xs font-semibold text-blue-600">相关品牌</span>
+                <p className="text-sm text-slate-600 mt-1">{c.brand}</p>
+              </div>
+              <div>
+                <span className="text-xs font-semibold text-slate-500">所属 Signal</span>
+                <p className="text-sm text-slate-600 mt-1 line-clamp-2">{c.signalTitle}</p>
+              </div>
+              <div>
+                <span className="text-xs font-semibold text-rose-600">品牌动作</span>
+                <p className="text-sm text-slate-700 leading-relaxed mt-1">{c.action}</p>
+              </div>
+              <div className="bg-amber-50 rounded-lg p-3 border border-amber-100">
+                <span className="text-xs font-semibold text-amber-700">可借鉴点</span>
+                <p className="text-sm text-slate-700 leading-relaxed mt-1">{c.reference}</p>
+              </div>
+            </div>
             <div className="mt-3 flex flex-wrap gap-1.5">
-              {c.topics.slice(0, 3).map(topic => (
+              {c.tags.map(topic => (
                 <span
                   key={topic}
                   className="px-2 py-0.5 bg-slate-100 text-slate-500 text-xs rounded-full"
@@ -605,65 +862,99 @@ function StatsTab({ signals }: { signals: Signal[] }) {
 }
 
 function InspirationsTab({ signals }: { signals: Signal[] }) {
-  const inspirations = useMemo(() => {
-    return signals.flatMap(signal => [
-      {
-        type: 'content',
-        signalId: signal.id,
-        signalTitle: signal.title,
-        content: signal.sofieInsights.content,
-        label: '内容机会',
-        color: 'rose'
-      },
-      {
-        type: 'operations',
-        signalId: signal.id,
-        signalTitle: signal.title,
-        content: signal.sofieInsights.operations,
-        label: '运营机会',
-        color: 'blue'
-      },
-      {
-        type: 'ugc',
-        signalId: signal.id,
-        signalTitle: signal.title,
-        content: signal.sofieInsights.ugc,
-        label: 'UGC机会',
-        color: 'green'
-      },
-      {
-        type: 'ip',
-        signalId: signal.id,
-        signalTitle: signal.title,
-        content: signal.sofieInsights.ip,
-        label: 'IP机会',
-        color: 'purple'
-      }
-    ].filter(item => item.content));
+  const proposalIdeas = useMemo<ProposalIdea[]>(() => {
+    return signals.flatMap(signal => {
+      const base = {
+        sourceSignal: signal.title,
+        signalNumber: signal.id,
+        tags: signal.tags,
+        category: signal.category,
+      };
+
+      const candidates: Array<Omit<ProposalIdea, 'content'> & { content?: string }> = [
+        {
+          ...base,
+          type: '内容机会' as const,
+          content: signal.sofieInsights.content,
+          color: 'rose' as const,
+        },
+        {
+          ...base,
+          type: '运营机会' as const,
+          content: signal.sofieInsights.operations,
+          color: 'blue' as const,
+        },
+        {
+          ...base,
+          type: 'UGC机会' as const,
+          content: signal.sofieInsights.ugc,
+          color: 'green' as const,
+        },
+        {
+          ...base,
+          type: 'IP机会' as const,
+          content: signal.sofieInsights.ip,
+          color: 'purple' as const,
+        },
+        {
+          ...base,
+          type: '风险提醒' as const,
+          content: signal.sofieInsights.risks,
+          color: 'amber' as const,
+        },
+        {
+          ...base,
+          type: '提案金句' as const,
+          content: signal.proposalLine,
+          color: 'slate' as const,
+        },
+      ];
+
+      return candidates.flatMap(item => {
+        const content = item.content?.trim();
+
+        return content ? [{ ...item, content }] : [];
+      });
+    });
   }, [signals]);
 
-  const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [typeFilter, setTypeFilter] = useState<string>('全部灵感');
 
-  const filteredInspirations = inspirations.filter(
-    item => typeFilter === 'all' || item.type === typeFilter
-  );
+  const filteredIdeas = proposalIdeas.filter(item => {
+    if (typeFilter === '全部灵感') {
+      return true;
+    }
+
+    return item.type === typeFilter;
+  });
+
+  useEffect(() => {
+    console.log('proposal ideas', proposalIdeas.length);
+    console.log('proposal idea types', proposalIdeas.map(i => i.type));
+    console.log('ideas', proposalIdeas.length);
+    console.log('filteredIdeas', filteredIdeas.length);
+  }, [proposalIdeas, filteredIdeas.length]);
 
   const colorClasses: Record<string, { bg: string; border: string; text: string }> = {
     rose: { bg: 'bg-rose-50', border: 'border-rose-200', text: 'text-rose-600' },
     blue: { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-600' },
     green: { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-600' },
-    purple: { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-600' }
+    purple: { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-600' },
+    amber: { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700' },
+    slate: { bg: 'bg-slate-50', border: 'border-slate-200', text: 'text-slate-700' }
   };
 
   return (
     <div>
       <div className="mb-6 flex flex-wrap gap-2">
         {[
-          { key: 'all', label: '全部灵感' },
-          { key: 'content', label: '内容机会', color: 'rose' },
-          { key: 'operations', label: '运营机会', color: 'blue' },
-          { key: 'ugc', label: 'UGC机会', color: 'green' },
-          { key: 'ip', label: 'IP机会', color: 'purple' }
+          { key: '全部灵感', label: '全部灵感' },
+          { key: '内容机会', label: '内容机会', color: 'rose' },
+          { key: '运营机会', label: '运营机会', color: 'blue' },
+          { key: 'UGC机会', label: 'UGC机会', color: 'green' },
+          { key: 'IP机会', label: 'IP机会', color: 'purple' },
+          { key: '风险提醒', label: '风险提醒', color: 'amber' },
+          { key: '提案金句', label: '提案金句', color: 'slate' }
         ].map(filter => (
           <button
             key={filter.key}
@@ -677,7 +968,9 @@ function InspirationsTab({ signals }: { signals: Signal[] }) {
               backgroundColor: filter.color === 'rose' ? '#f43f5e' :
                               filter.color === 'blue' ? '#3b82f6' :
                               filter.color === 'green' ? '#22c55e' :
-                              filter.color === 'purple' ? '#a855f7' : undefined
+                              filter.color === 'purple' ? '#a855f7' :
+                              filter.color === 'amber' ? '#f59e0b' :
+                              filter.color === 'slate' ? '#475569' : undefined
             } : {}}
           >
             {filter.label}
@@ -686,7 +979,7 @@ function InspirationsTab({ signals }: { signals: Signal[] }) {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {filteredInspirations.map((item, i) => {
+        {filteredIdeas.map((item, i) => {
           const colors = colorClasses[item.color];
           return (
             <div
@@ -695,36 +988,27 @@ function InspirationsTab({ signals }: { signals: Signal[] }) {
             >
               <div className="flex items-start justify-between gap-3 mb-3">
                 <span className={`text-xs font-semibold ${colors.text} px-2 py-0.5 rounded-full bg-white/50`}>
-                  {item.label}
+                  {item.type}
                 </span>
-                <span className="text-xs text-slate-400">Signal {item.signalId}</span>
+                <span className="text-xs text-slate-400">Signal {item.signalNumber}</span>
               </div>
               <p className="text-sm text-slate-700 leading-relaxed">{item.content}</p>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {[...item.tags, ...item.category].slice(0, 4).map(tag => (
+                  <span
+                    key={tag}
+                    className="px-2 py-0.5 bg-white/60 text-slate-500 text-xs rounded-full"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
               <p className="mt-3 text-xs text-slate-500 line-clamp-2">
-                来源：{item.signalTitle}
+                来源：{item.sourceSignal}
               </p>
             </div>
           );
         })}
-      </div>
-
-      {/* Proposal Lines */}
-      <div className="mt-8">
-        <h3 className="text-sm font-semibold text-slate-700 mb-4 flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-amber-500" />
-          提案金句库
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {signals.map(signal => (
-            <div
-              key={signal.id}
-              className="bg-gradient-to-br from-rose-50 to-amber-50 rounded-xl border border-rose-100 p-4"
-            >
-              <p className="text-sm font-medium text-slate-700">{signal.proposalLine}</p>
-              <span className="text-xs text-slate-400 mt-2 inline-block">Signal {signal.id}</span>
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   );
