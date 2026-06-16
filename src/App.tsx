@@ -145,15 +145,31 @@ function createWeekOption(start: string, end: string): WeekOption | null {
   }
 
   return {
-    start,
-    end,
+    start: formatInputDate(startDate),
+    end: formatInputDate(endDate),
     label: `${formatDisplayDate(startDate)} - ${formatDisplayDate(endDate)}`,
   };
 }
 
-function createWeekOptions(reports: { dateRange: DateRange }[]): WeekOption[] {
-  return reports
-    .map(report => createWeekOption(report.dateRange.start, report.dateRange.end))
+function createWeekOptionFromPeriod(period: string): WeekOption | null {
+  const periodRange = parseDateRangeText(period);
+
+  if (!periodRange) {
+    return null;
+  }
+
+  return createWeekOption(formatInputDate(periodRange.start), formatInputDate(periodRange.end));
+}
+
+function createWeekOptions(reports: { dateRange: DateRange }[], signals: Signal[]): WeekOption[] {
+  const options = [
+    ...reports.map(report => createWeekOption(report.dateRange.start, report.dateRange.end)),
+    ...signals.map(signal => createWeekOptionFromPeriod(signal.period)),
+  ].filter((option): option is WeekOption => Boolean(option));
+
+  return Array.from(
+    new Map(options.map(option => [`${option.start}-${option.end}`, option])).values()
+  )
     .filter((option): option is WeekOption => Boolean(option))
     .sort((a, b) => {
       const aEnd = parseLocalDate(a.end)?.getTime() ?? 0;
@@ -240,7 +256,7 @@ function App() {
           return;
         }
 
-        const nextWeekOptions = createWeekOptions(parsed.reports);
+        const nextWeekOptions = createWeekOptions(parsed.reports, parsed.signals);
 
         setSignals(parsed.signals);
         setDateRange(parsed.dateRange);
