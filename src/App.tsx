@@ -161,22 +161,39 @@ function createWeekOptionFromPeriod(period: string): WeekOption | null {
   return createWeekOption(formatInputDate(periodRange.start), formatInputDate(periodRange.end));
 }
 
+function sortWeekOptions(options: WeekOption[]): WeekOption[] {
+  return Array.from(
+    new Map(options.map(option => [`${option.start}-${option.end}`, option])).values()
+  ).sort((a, b) => {
+    const aEnd = parseLocalDate(a.end)?.getTime() ?? 0;
+    const bEnd = parseLocalDate(b.end)?.getTime() ?? 0;
+
+    return bEnd - aEnd;
+  });
+}
+
+function createWeekOptionsFromMarkdown(markdown: string): WeekOption[] {
+  const reportBlocks = markdown
+    .split(/(?=^# FemCare Signal Log\s*$)/gm)
+    .filter(block => block.trim().length > 0);
+
+  const options = reportBlocks.flatMap(block => {
+    const period = block.match(/^检索窗口：\s*([^\n]+)/m)?.[1] ?? '';
+    const option = createWeekOptionFromPeriod(period);
+
+    return option ? [option] : [];
+  });
+
+  return sortWeekOptions(options);
+}
+
 function createWeekOptions(reports: { dateRange: DateRange }[], signals: Signal[]): WeekOption[] {
   const options = [
     ...reports.map(report => createWeekOption(report.dateRange.start, report.dateRange.end)),
     ...signals.map(signal => createWeekOptionFromPeriod(signal.period)),
   ].filter((option): option is WeekOption => Boolean(option));
 
-  return Array.from(
-    new Map(options.map(option => [`${option.start}-${option.end}`, option])).values()
-  )
-    .filter((option): option is WeekOption => Boolean(option))
-    .sort((a, b) => {
-      const aEnd = parseLocalDate(a.end)?.getTime() ?? 0;
-      const bEnd = parseLocalDate(b.end)?.getTime() ?? 0;
-
-      return bEnd - aEnd;
-    });
+  return sortWeekOptions(options);
 }
 
 function isSignalInWeekOption(signal: Signal, weekOption: WeekOption): boolean {
@@ -248,6 +265,7 @@ function App() {
           return;
         }
 
+        const markdownWeekOptions = createWeekOptionsFromMarkdown(markdown);
         const parsed = parseSignalMarkdown(markdown);
 
         if (parsed.signals.length === 0) {
@@ -256,7 +274,10 @@ function App() {
           return;
         }
 
-        const nextWeekOptions = createWeekOptions(parsed.reports, parsed.signals);
+        const nextWeekOptions = sortWeekOptions([
+          ...markdownWeekOptions,
+          ...createWeekOptions(parsed.reports, parsed.signals),
+        ]);
 
         setSignals(parsed.signals);
         setDateRange(parsed.dateRange);
