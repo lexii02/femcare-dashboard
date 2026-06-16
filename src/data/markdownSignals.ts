@@ -49,6 +49,10 @@ export interface DateRange {
 export interface MarkdownDashboardData {
   signals: Signal[];
   dateRange: DateRange;
+  reports: {
+    dateRange: DateRange;
+    signalCount: number;
+  }[];
 }
 
 const EMPTY_DATE_RANGE: DateRange = {
@@ -75,10 +79,20 @@ export async function fetchSignalMarkdown(): Promise<string> {
 }
 
 export function parseSignalMarkdown(markdown: string): MarkdownDashboardData {
-  const dateRange = parseDateRange(markdown);
-  const signals = parseSignals(markdown, dateRange);
+  const reports = parseReports(markdown);
+  const signals = reports.flatMap(report => report.signals);
+  const dateRange = reports[0]?.dateRange ?? parseDateRange(markdown);
 
+  console.log('all reports', reports.map(({ dateRange, signals }) => ({
+    dateRange,
+    signalCount: signals.length,
+  })));
   console.log('parsed signals count', signals.length);
+  console.log('all signals', signals.length);
+  console.log('signals by period', signals.map(signal => ({
+    title: signal.title,
+    period: signal.period,
+  })));
   console.log('first parsed signal', signals[0] ?? null);
 
   if (markdown.trim().length > 0 && signals.length === 0) {
@@ -88,7 +102,37 @@ export function parseSignalMarkdown(markdown: string): MarkdownDashboardData {
   return {
     signals,
     dateRange,
+    reports: reports.map(({ dateRange, signals }) => ({
+      dateRange,
+      signalCount: signals.length,
+    })),
   };
+}
+
+function parseReports(markdown: string) {
+  const reportPattern = /^# FemCare Signal Log\s*$/gm;
+  const matches = Array.from(markdown.matchAll(reportPattern));
+
+  if (matches.length === 0) {
+    const dateRange = parseDateRange(markdown);
+
+    return [{
+      dateRange,
+      signals: parseSignals(markdown, dateRange),
+    }];
+  }
+
+  return matches.map((match, index) => {
+    const start = match.index ?? 0;
+    const end = matches[index + 1]?.index ?? markdown.length;
+    const block = markdown.slice(start, end);
+    const dateRange = parseDateRange(block);
+
+    return {
+      dateRange,
+      signals: parseSignals(block, dateRange),
+    };
+  });
 }
 
 function parseDateRange(markdown: string): DateRange {

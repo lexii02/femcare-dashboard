@@ -128,6 +128,32 @@ function parseLocalDate(value: string): Date | null {
   return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
 }
 
+function parseDateRangeText(value: string): { start: Date; end: Date } | null {
+  const matches = Array.from(value.matchAll(/(\d{4})[-/](\d{2})[-/](\d{2})/g));
+
+  if (matches.length < 2) {
+    return null;
+  }
+
+  const toDate = (match: RegExpMatchArray) =>
+    new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+
+  return {
+    start: toDate(matches[0]),
+    end: toDate(matches[1]),
+  };
+}
+
+function getSignalFilterDate(signal: Signal, fallbackDateRange: DateRange): Date | null {
+  const periodRange = parseDateRangeText(signal.period);
+
+  if (periodRange) {
+    return periodRange.end;
+  }
+
+  return parseLocalDate(signal.signalDate || fallbackDateRange.generated || fallbackDateRange.end);
+}
+
 function formatDisplayDate(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -178,6 +204,10 @@ function App() {
 
         setSignals(parsed.signals);
         setDateRange(parsed.dateRange);
+        const latestReportEnd = parseLocalDate(parsed.dateRange.end);
+        if (latestReportEnd) {
+          setCurrentWeekStart(startOfWeek(latestReportEnd));
+        }
         setLoadStatus('ready');
       })
       .catch(error => {
@@ -222,7 +252,7 @@ function App() {
 
   const weeklySignals = useMemo(() => {
     return signals.filter(signal => {
-      const signalDate = parseLocalDate(signal.signalDate || dateRange.generated || dateRange.end);
+      const signalDate = getSignalFilterDate(signal, dateRange);
 
       if (!signalDate) {
         return true;
@@ -275,9 +305,14 @@ function App() {
 
   useEffect(() => {
     console.log('signals', signals.length);
+    console.log('signals by period', signals.map(signal => ({
+      title: signal.title,
+      period: signal.period,
+    })));
+    console.log('selectedWeek', currentWeekRange.label);
     console.log('filteredSignals', filteredSignals.length);
     console.log('searchQuery', searchQuery);
-  }, [signals.length, filteredSignals.length, searchQuery]);
+  }, [signals, currentWeekRange.label, filteredSignals.length, searchQuery]);
 
   const goToPreviousWeek = () => {
     setCurrentWeekStart((weekStart: Date) => addDays(weekStart, -7));
