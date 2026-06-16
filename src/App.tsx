@@ -44,6 +44,12 @@ interface ProposalIdea {
   color: 'rose' | 'blue' | 'green' | 'purple' | 'amber' | 'slate';
 }
 
+interface WeekOption {
+  label: string;
+  start: string;
+  end: string;
+}
+
 const GENERIC_BRAND_KEYWORDS = [
   '传统卫生巾品牌',
   '女性护理品牌',
@@ -100,24 +106,6 @@ function uniqueItems(items: string[]): string[] {
   return Array.from(new Set(items.map(item => item.trim()).filter(Boolean)));
 }
 
-function startOfWeek(date: Date): Date {
-  const weekStart = new Date(date);
-  const day = weekStart.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-
-  weekStart.setHours(0, 0, 0, 0);
-  weekStart.setDate(weekStart.getDate() + diff);
-
-  return weekStart;
-}
-
-function addDays(date: Date, days: number): Date {
-  const nextDate = new Date(date);
-  nextDate.setDate(nextDate.getDate() + days);
-
-  return nextDate;
-}
-
 function parseLocalDate(value: string): Date | null {
   const match = value.match(/(\d{4})[-/](\d{2})[-/](\d{2})/);
 
@@ -144,14 +132,63 @@ function parseDateRangeText(value: string): { start: Date; end: Date } | null {
   };
 }
 
-function getSignalFilterDate(signal: Signal, fallbackDateRange: DateRange): Date | null {
+function createWeekOption(start: string, end: string): WeekOption | null {
+  if (!start || !end) {
+    return null;
+  }
+
+  const startDate = parseLocalDate(start);
+  const endDate = parseLocalDate(end);
+
+  if (!startDate || !endDate) {
+    return null;
+  }
+
+  return {
+    start,
+    end,
+    label: `${formatDisplayDate(startDate)} - ${formatDisplayDate(endDate)}`,
+  };
+}
+
+function createWeekOptions(reports: { dateRange: DateRange }[]): WeekOption[] {
+  return reports
+    .map(report => createWeekOption(report.dateRange.start, report.dateRange.end))
+    .filter((option): option is WeekOption => Boolean(option))
+    .sort((a, b) => {
+      const aEnd = parseLocalDate(a.end)?.getTime() ?? 0;
+      const bEnd = parseLocalDate(b.end)?.getTime() ?? 0;
+
+      return bEnd - aEnd;
+    });
+}
+
+function isSignalInWeekOption(signal: Signal, weekOption: WeekOption): boolean {
   const periodRange = parseDateRangeText(signal.period);
 
   if (periodRange) {
-    return periodRange.end;
+    return formatInputDate(periodRange.start) === weekOption.start &&
+      formatInputDate(periodRange.end) === weekOption.end;
   }
 
-  return parseLocalDate(signal.signalDate || fallbackDateRange.generated || fallbackDateRange.end);
+  const signalDate = parseLocalDate(signal.signalDate);
+
+  if (!signalDate) {
+    return false;
+  }
+
+  const start = parseLocalDate(weekOption.start);
+  const end = parseLocalDate(weekOption.end);
+
+  return Boolean(start && end && isDateInRange(signalDate, start, end));
+}
+
+function formatInputDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
 }
 
 function formatDisplayDate(date: Date): string {
@@ -176,7 +213,8 @@ function App() {
   const [showFilters, setShowFilters] = useState(false);
   const [signals, setSignals] = useState<Signal[]>([]);
   const [dateRange, setDateRange] = useState<DateRange>({ start: '', end: '', generated: '' });
-  const [currentWeekStart, setCurrentWeekStart] = useState(() => startOfWeek(new Date()));
+  const [weekOptions, setWeekOptions] = useState<WeekOption[]>([]);
+  const [selectedWeekIndex, setSelectedWeekIndex] = useState(0);
   const [loadStatus, setLoadStatus] = useState<'loading' | 'ready' | 'empty' | 'parse-error' | 'error'>('loading');
   const [loadError, setLoadError] = useState('');
 
@@ -202,12 +240,12 @@ function App() {
           return;
         }
 
+        const nextWeekOptions = createWeekOptions(parsed.reports);
+
         setSignals(parsed.signals);
         setDateRange(parsed.dateRange);
-        const latestReportEnd = parseLocalDate(parsed.dateRange.end);
-        if (latestReportEnd) {
-          setCurrentWeekStart(startOfWeek(latestReportEnd));
-        }
+        setWeekOptions(nextWeekOptions);
+        setSelectedWeekIndex(0);
         setLoadStatus('ready');
       })
       .catch(error => {
@@ -239,28 +277,20 @@ function App() {
     ]))).filter(Boolean);
   }, [signals]);
 
-  const currentWeekRange = useMemo(() => {
-    const start = currentWeekStart;
-    const end = addDays(start, 6);
-
-    return {
-      start,
-      end,
-      label: `${formatDisplayDate(start)} - ${formatDisplayDate(end)}`,
+  const selectedWeek = weekOptions[selectedWeekIndex] ??
+    createWeekOption(dateRange.start, dateRange.end) ?? {
+      start: '',
+      end: '',
+      label: '',
     };
-  }, [currentWeekStart]);
 
   const weeklySignals = useMemo(() => {
-    return signals.filter(signal => {
-      const signalDate = getSignalFilterDate(signal, dateRange);
+    if (!selectedWeek.start || !selectedWeek.end) {
+      return signals;
+    }
 
-      if (!signalDate) {
-        return true;
-      }
-
-      return isDateInRange(signalDate, currentWeekRange.start, currentWeekRange.end);
-    });
-  }, [signals, dateRange.generated, dateRange.end, currentWeekRange.start, currentWeekRange.end]);
+    return signals.filter(signal => isSignalInWeekOption(signal, selectedWeek));
+  }, [signals, selectedWeek]);
 
   const filteredSignals = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -304,22 +334,24 @@ function App() {
   }, [weeklySignals, searchQuery, selectedTags]);
 
   useEffect(() => {
+    console.log('reports', weekOptions.map(option => `${option.start} 至 ${option.end}`));
+    console.log('weekOptions', weekOptions);
     console.log('signals', signals.length);
     console.log('signals by period', signals.map(signal => ({
       title: signal.title,
       period: signal.period,
     })));
-    console.log('selectedWeek', currentWeekRange.label);
-    console.log('filteredSignals', filteredSignals.length);
+    console.log('selectedWeek', selectedWeek);
+    console.log('signals by selectedWeek', filteredSignals.length);
     console.log('searchQuery', searchQuery);
-  }, [signals, currentWeekRange.label, filteredSignals.length, searchQuery]);
+  }, [weekOptions, signals, selectedWeek, filteredSignals.length, searchQuery]);
 
   const goToPreviousWeek = () => {
-    setCurrentWeekStart((weekStart: Date) => addDays(weekStart, -7));
+    setSelectedWeekIndex(index => Math.min(index + 1, Math.max(weekOptions.length - 1, 0)));
   };
 
   const goToNextWeek = () => {
-    setCurrentWeekStart((weekStart: Date) => addDays(weekStart, 7));
+    setSelectedWeekIndex(index => Math.max(index - 1, 0));
   };
 
   const toggleTag = (tag: string) => {
@@ -361,7 +393,7 @@ function App() {
                   </button>
                   <div className="flex items-center gap-1.5 text-[17px] font-medium text-slate-500 whitespace-nowrap">
                     <Clock className="w-4 h-4 text-slate-400" />
-                    {currentWeekRange.label}
+                    {selectedWeek.label}
                   </div>
                   <button
                     type="button"
@@ -483,7 +515,7 @@ function App() {
           <LoadStateCard title="无法读取周报 Markdown" description={loadError} />
         )}
         {loadStatus === 'ready' && weeklySignals.length === 0 && (
-          <LoadStateCard title="本周暂无记录" description={currentWeekRange.label} />
+          <LoadStateCard title="本周暂无记录" description={selectedWeek.label} />
         )}
         {loadStatus === 'ready' && activeTab === 'timeline' && (
           <TimelineTab
