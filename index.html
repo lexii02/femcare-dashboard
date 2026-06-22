@@ -13,12 +13,13 @@
     <div id="root"></div>
     <script type="module">
       if (window.location.hostname === 'lexii02.github.io') {
+        const assetVersion = '20260622-weekly-cache-fix';
         const stylesheet = document.createElement('link');
         stylesheet.rel = 'stylesheet';
-        stylesheet.href = '/femcare-dashboard/assets/main.css';
+        stylesheet.href = `/femcare-dashboard/assets/main.css?v=${assetVersion}`;
         document.head.appendChild(stylesheet);
 
-        Function("return import('/femcare-dashboard/assets/main.js')")();
+        Function(`return import('/femcare-dashboard/assets/main.js?v=${assetVersion}')`)();
       } else {
         import('/src/main.tsx');
       }
