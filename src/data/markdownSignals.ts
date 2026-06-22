@@ -62,7 +62,8 @@ const EMPTY_DATE_RANGE: DateRange = {
 };
 
 export async function fetchSignalMarkdown(): Promise<string> {
-  const response = await fetch(`${import.meta.env.BASE_URL}data/FemCare_SIGNAL_LOG.md`);
+  const markdownUrl = `${import.meta.env.BASE_URL}data/FemCare_SIGNAL_LOG.md?v=${Date.now()}`;
+  const response = await fetch(markdownUrl, { cache: 'no-store' });
 
   if (!response.ok) {
     throw new Error(`无法读取周报 Markdown：HTTP ${response.status}`);

@@ -391,6 +391,9 @@ function App() {
     setSelectedWeekIndex(index => Math.max(index - 1, 0));
   };
 
+  const canGoPreviousWeek = selectedWeekIndex < weekOptions.length - 1;
+  const canGoNextWeek = selectedWeekIndex > 0;
+
   const toggleTag = (tag: string) => {
     setSelectedTags(prev =>
       prev.includes(tag)
@@ -424,7 +427,8 @@ function App() {
                   <button
                     type="button"
                     onClick={goToPreviousWeek}
-                    className="px-2 py-1 rounded-md bg-white/70 border border-rose-100 text-xs font-medium hover:border-rose-300 hover:text-rose-500 transition-colors"
+                    disabled={!canGoPreviousWeek}
+                    className="px-2 py-1 rounded-md bg-white/70 border border-rose-100 text-xs font-medium hover:border-rose-300 hover:text-rose-500 disabled:opacity-40 disabled:hover:border-rose-100 disabled:hover:text-slate-500 transition-colors"
                   >
                     上一周
                   </button>
@@ -435,7 +439,8 @@ function App() {
                   <button
                     type="button"
                     onClick={goToNextWeek}
-                    className="px-2 py-1 rounded-md bg-white/70 border border-rose-100 text-xs font-medium hover:border-rose-300 hover:text-rose-500 transition-colors"
+                    disabled={!canGoNextWeek}
+                    className="px-2 py-1 rounded-md bg-white/70 border border-rose-100 text-xs font-medium hover:border-rose-300 hover:text-rose-500 disabled:opacity-40 disabled:hover:border-rose-100 disabled:hover:text-slate-500 transition-colors"
                   >
                     下一周
                   </button>
